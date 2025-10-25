@@ -188,6 +188,23 @@ cython_debug/
 #  you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
+.vscode/**
+.vscode-test/**
+out/**
+# 忽略所有层级的 node_modules
+**/node_modules/
+src/**
+.gitignore
+.yarnrc
+webpack.config.js
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/eslint.config.mjs
+**/*.map
+**/*.ts
+**/.vscode-test.*
+
+
 # Ruff stuff:
 .ruff_cache/
 
@@ -205,3 +222,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
