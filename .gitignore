@@ -1,3 +1,61 @@
+# Node.js 依赖目录（在所有子目录中忽略）
+**/node_modules/
+
+# 构建输出与打包产物
+**/out/
+**/dist/
+**/build/
+**/.cache/
+**/.turbo/
+**/.parcel-cache/
+
+# 临时文件与日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript 编译缓存
+**/*.tsbuildinfo
+
+# 覆盖率与测试输出
+coverage/
+.nyc_output/
+
+# 环境与敏感配置文件
+.env
+.env.*
+!.env.example
+
+# =========================================
+# 🔍 项目结构自定义部分
+# =========================================
+
+# 忽略每个阶段子目录下的 build 产物
+stage_*/**/node_modules/
+stage_*/**/out/
+stage_*/**/dist/
+
+# 但保留源代码
+!stage_*/**/src/**
+!stage_*/**/package.json
+!stage_*/**/tsconfig.json
+!stage_*/**/*.ts
+!stage_*/**/*.json
+
+
+# Visual Studio Code
+#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
+#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#  you could uncomment the following to ignore the entire vscode folder
+# .vscode/
+
+**/.vscode/**
+**/.vscode-test/** 
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -180,27 +238,6 @@ cython_debug/
 # Ignore directories containing user credentials, local state, and settings.
 # Learn more at https://abstra.io/docs
 .abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
-
-**/.vscode/**
-**/.vscode-test/**
-out/**
-# 忽略所有层级的 node_modules
-**/node_modules/
-.gitignore
-.yarnrc
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
-**/*.ts
-**/.vscode-test.*
-
 
 # Ruff stuff:
 .ruff_cache/
