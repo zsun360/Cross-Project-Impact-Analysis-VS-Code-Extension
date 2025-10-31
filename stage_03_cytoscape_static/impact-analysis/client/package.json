@@ -10,11 +10,18 @@
     "commands": [
       {
         "command": "impact.ping",
-        "title": "Impact: Ping Server"
+        "title": "Impact: Ping Server",
+        "category": "Impact"
       },
       {
         "command": "impact.openGraphView",
-        "title": "Impact: Open Graph View"
+        "title": "Impact: Open Graph View",
+        "category": "Impact"
+      },
+      {
+        "command": "impact.showImportGraph",
+        "title": "Impact: Show Import Graph",
+        "category": "Impact"
       }
     ]
   },

@@ -23,6 +23,9 @@ import {
 
 import * as fs from 'fs';
 
+import { setClient } from './utils/lspClientApi';
+import { registerCommands } from './commands/register';
+
 let client: LanguageClient;
 let output: OutputChannel;
 
@@ -70,7 +73,10 @@ export async function activate(context: ExtensionContext) {
     serverOptions,
     clientOptions
   );
+  
+  // Start the client and expose it to Webview commands
   await client.start();
+  setClient(client);
   context.subscriptions.push(client);
 
   // Register the impact.ping commands to ping LSP Server
@@ -94,6 +100,11 @@ export async function activate(context: ExtensionContext) {
       ImpactGraphPanel.createOrShow(context);
     })
   );
+  // Register UI commands (e.g., Impact: Show Import Graph)
+  registerCommands(context);
+
+  // Optional: show ready info
+  window.setStatusBarMessage('Impact Analysis: ready', 3000);
 }
 
 export function deactivate(): Thenable<void> | undefined {

@@ -1,0 +1,94 @@
+{
+  "kind": "import-graph",
+  "language": "python",
+  "rootUri": "file:///workspace/sample",
+  "nodes": [
+    {
+      "id": "app/__init__.py",
+      "label": "app/__init__.py",
+      "type": "file",
+      "group": "app"
+    },
+    {
+      "id": "app/main.py",
+      "label": "app/main.py",
+      "type": "file",
+      "group": "app"
+    },
+    {
+      "id": "app/utils.py",
+      "label": "app/utils.py",
+      "type": "file",
+      "group": "app"
+    },
+    {
+      "id": "app/config.py",
+      "label": "app/config.py",
+      "type": "file",
+      "group": "app"
+    },
+    {
+      "id": "pkg/mathlib/__init__.py",
+      "label": "pkg/mathlib/__init__.py",
+      "type": "file",
+      "group": "pkg.mathlib"
+    },
+    {
+      "id": "pkg/mathlib/stats.py",
+      "label": "pkg/mathlib/stats.py",
+      "type": "file",
+      "group": "pkg.mathlib"
+    },
+    {
+      "id": "pkg/io/__init__.py",
+      "label": "pkg/io/__init__.py",
+      "type": "file",
+      "group": "pkg.io"
+    },
+    {
+      "id": "pkg/io/csvio.py",
+      "label": "pkg/io/csvio.py",
+      "type": "file",
+      "group": "pkg.io"
+    }
+  ],
+  "edges": [
+    {
+      "source": "app/main.py",
+      "target": "app/utils.py",
+      "type": "import"
+    },
+    {
+      "source": "app/main.py",
+      "target": "app/config.py",
+      "type": "import"
+    },
+    {
+      "source": "app/utils.py",
+      "target": "pkg/mathlib/stats.py",
+      "type": "import"
+    },
+    {
+      "source": "app/utils.py",
+      "target": "pkg/io/csvio.py",
+      "type": "import"
+    },
+    {
+      "source": "pkg/io/csvio.py",
+      "target": "pkg/io/__init__.py",
+      "type": "import"
+    },
+    {
+      "source": "pkg/mathlib/stats.py",
+      "target": "pkg/mathlib/__init__.py",
+      "type": "import"
+    }
+  ],
+  "meta": {
+    "generatedAt": 0,
+    "stats": {
+      "files": 8,
+      "edges": 6
+    }
+  }
+}
