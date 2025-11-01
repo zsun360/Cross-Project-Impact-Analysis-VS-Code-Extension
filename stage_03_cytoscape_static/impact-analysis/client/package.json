@@ -22,6 +22,14 @@
         "command": "impact.showImportGraph",
         "title": "Impact: Show Import Graph",
         "category": "Impact"
+      },
+      {
+        "command": "impact.exportGraphPng",
+        "title": "Impact: Export Graph (PNG)"
+      },
+      {
+        "command": "impact.exportGraphSvg",
+        "title": "Impact: Export Graph (SVG)"
       }
     ]
   },

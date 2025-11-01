@@ -49,24 +49,24 @@ export class GraphPanel {
     this.panel = panel;
     this.output = output;
     this._readyPromise = new Promise<void>(res => (this._readyResolve = res));
-  
+
     const base = vscode.Uri.joinPath(
       context.extensionUri, 'src', 'webview');
 
-    const htmlPath   = vscode.Uri.joinPath(base, 'graph.html'); 
+    const htmlPath = vscode.Uri.joinPath(base, 'graph.html');
 
-      // 加一个存在性检查
-      if (!fs.existsSync(htmlPath.fsPath)) {
-        vscode.window.showErrorMessage(`HTML entry not found: ${htmlPath}`);
-        return;
-      }
+    // 加一个存在性检查
+    if (!fs.existsSync(htmlPath.fsPath)) {
+      vscode.window.showErrorMessage(`HTML entry not found: ${htmlPath}`);
+      return;
+    }
 
     let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
 
-    const cytoPath   = vscode.Uri.joinPath(base, 'vendor', 'cytoscape.min.js');
+    const cytoPath = vscode.Uri.joinPath(base, 'vendor', 'cytoscape.min.js');
     const graphJsPath = vscode.Uri.joinPath(base, 'graph.js');
 
-    const cytoJsUri  = this.panel.webview.asWebviewUri(cytoPath);
+    const cytoJsUri = this.panel.webview.asWebviewUri(cytoPath);
     const graphJsUri = this.panel.webview.asWebviewUri(graphJsPath);
 
     html = html
@@ -79,19 +79,19 @@ export class GraphPanel {
 
     // Handle messages from the webview
     this.panel.webview.onDidReceiveMessage(async (msg) => {
-     switch(msg?.type) {
-      case 'ready':
-        this._readyResolve();
-        this.output.appendLine('[GraphPanel] Webview is ready.');
-        break;  
-      case 'drill':
-        this.output.appendLine(`[GraphPanel] Drill request for id: ${msg?.payload?.id ?? ''}`);
-        vscode.window.showInformationMessage(`Drill: ${msg?.payload?.id ?? ''}`);
-        break;
-      case 'openInEditor':
-        if (msg?.payload?.id) {
+      switch (msg?.type) {
+        case 'ready':
+          this._readyResolve();
+          this.output.appendLine('[GraphPanel] Webview is ready.');
+          break;
+        case 'drill':
+          this.output.appendLine(`[GraphPanel] Drill request for id: ${msg?.payload?.id ?? ''}`);
+          vscode.window.showInformationMessage(`Drill: ${msg?.payload?.id ?? ''}`);
+          break;
+        case 'openInEditor':
+          if (msg?.payload?.id) {
             const fileUri = vscode.Uri.file(msg.payload.id);
-            const fsPath =fileUri.fsPath;
+            const fsPath = fileUri.fsPath;
             if (fsPath && path.isAbsolute(fsPath) && fs.existsSync(fsPath)) {
               try {
                 const uri = vscode.Uri.file(fsPath);;
@@ -102,18 +102,39 @@ export class GraphPanel {
                 vscode.window.showErrorMessage(`Failed to open file: ${fsPath}`);
               }
             } else {
-            // Demo-friendly: do not throw, just inform gently.
+              // Demo-friendly: do not throw, just inform gently.
               this.output.appendLine(`[openInEditor:skip] Not a real file path or does not exist: ${fileUri}`);
               vscode.window.showInformationMessage('Demo node (no local file to open)');
             }
+          }
+          break;
+        case 'export:result': {
+          const kind = msg?.payload?.kind;
+          const uri = await vscode.window.showSaveDialog({
+            filters: kind === 'png' ? { PNG: ['png'] } : { SVG: ['svg'] },
+            saveLabel: 'Save Graph'
+          });
+          if (!uri) break;
+
+          if (kind === 'png') {
+            // data:image/png;base64,XXXXX
+            const base64 = String(msg.payload.dataUrl).split(',')[1] ?? '';
+            const buf = Buffer.from(base64, 'base64');
+            await vscode.workspace.fs.writeFile(uri, buf);
+          } else {
+            const svg = String(msg.payload.svg || '');
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(svg, 'utf8'));
+          }
+          vscode.window.showInformationMessage('Graph exported.');
+          break;
         }
-        break;
-      case 'log':
-        if (msg?.payload?.message) {
-          this.output.appendLine(`[Webview] ${msg.payload.message}`);
-        }
-        break;
-     }
+
+        case 'log':
+          if (msg?.payload?.message) {
+            this.output.appendLine(`[Webview] ${msg.payload.message}`);
+          }
+          break;
+      }
     }, null, this.disposables);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);

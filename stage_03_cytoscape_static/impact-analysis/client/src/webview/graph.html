@@ -17,6 +17,27 @@
         margin: 0;
         padding: 0;
       }
+      /* 默认（浅色） */
+      body.vscode-light #cy {
+        background: #ffffff;
+      }
+      body.vscode-light .toolbar {
+        background: #1112;
+        color: #222;
+      }
+      /* 深色 */
+      body.vscode-dark #cy {
+        background: #1e1e1e;
+      }
+      body.vscode-dark .toolbar {
+        background: #1118;
+        color: #fff;
+      }
+
+      /* 高对比度 */
+      body.vscode-high-contrast #cy {
+        background: canvas;
+      }
       .toolbar {
         position: absolute;
         top: 8px;

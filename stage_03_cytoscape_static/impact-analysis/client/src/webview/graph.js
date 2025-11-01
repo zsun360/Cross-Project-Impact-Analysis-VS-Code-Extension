@@ -99,17 +99,26 @@
     const container = document.getElementById("cy");
     state.cy?.destroy();
 
+    // 1) Construct without layout to measure layout separately
     const cy = (state.cy = cytoscape({
       container,
       elements: toElements(graph),
-      layout: { name: "cose", animate: false },
       style: [],
     }));
 
     applyStyles(cy);
-    cy.on("layoutstop", () => fit(cy));
-    fit(cy);
 
+    // 2) Measure layout time explicitly
+    const tLayoutStart = performance.now();
+    const layout = cy.layout({ name: "cose", animate: false });
+    layout.on("layoutstop", () => {
+      const tLayoutEnd = performance.now();
+      fit(cy);
+      log(`[metrics] layout=${(tLayoutEnd - tLayoutStart).toFixed(1)} ms`);
+    });
+    layout.run();
+
+    // 3) Interactions (unchanged)
     cy.on("tap", "node", (evt) => {
       const e = evt.originalEvent;
       const n = evt.target;
@@ -127,7 +136,18 @@
 
     window.addEventListener("keydown", (e) => {
       if (e.key.toLowerCase() === "r") {
-        cy.layout({ name: "cose", animate: false }).run();
+        const tReLayoutStart = performance.now();
+        const rel = cy.layout({ name: "cose", animate: false });
+        rel.on("layoutstop", () => {
+          const tReLayoutEnd = performance.now();
+          fit(cy);
+          log(
+            `[metrics] relayout=${(tReLayoutEnd - tReLayoutStart).toFixed(
+              1
+            )} ms`
+          );
+        });
+        rel.run();
       }
     });
 
@@ -144,15 +164,33 @@
 
     const t1 = performance.now();
     log(
-      `[webview] rendered nodes=${graph?.nodes?.length || 0}, edges=${
-        graph?.edges?.length || 0
-      } in ${(t1 - t0).toFixed(1)} ms`
+      `[metrics] render(total)=${(t1 - t0).toFixed(1)} ms nodes=${
+        graph?.nodes?.length || 0
+      } edges=${graph?.edges?.length || 0}`
     );
+  }
+
+  // Single message handler with export support
+  function exportBlob(kind) {
+    if (!state.cy) return;
+    if (kind === "png") {
+      const dataUrl = state.cy.png({
+        full: true,
+        scale: 2,
+        bg: getComputedStyle(document.body).backgroundColor,
+      });
+      post("export:result", { kind: "png", dataUrl });
+    } else if (kind === "svg") {
+      const svgStr = state.cy.svg({ full: true, scale: 1 }); // requires cytoscape-svg plugin
+      post("export:result", { kind: "svg", svg: svgStr });
+    }
   }
 
   window.addEventListener("message", (event) => {
     const { type, payload } = event.data || {};
     if (type === "render:graph") render(payload);
+    if (type === "export:png") exportBlob("png");
+    if (type === "export:svg") exportBlob("svg");
   });
 
   post("ready");
