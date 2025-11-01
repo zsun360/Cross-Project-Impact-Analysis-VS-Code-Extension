@@ -101,7 +101,7 @@ export async function activate(context: ExtensionContext) {
     })
   );
   // Register UI commands (e.g., Impact: Show Import Graph)
-  registerCommands(context);
+  registerCommands(context, output);
 
   // Optional: show ready info
   window.setStatusBarMessage('Impact Analysis: ready', 3000);
