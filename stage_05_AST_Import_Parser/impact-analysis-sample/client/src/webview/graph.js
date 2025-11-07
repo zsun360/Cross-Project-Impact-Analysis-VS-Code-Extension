@@ -99,16 +99,18 @@
 
   function render(graph) {
     const t0 = performance.now();
-    const container = document.getElementById("cy");
+    const containerEl = document.getElementById("cy");
     state.cy?.destroy();
 
     // 1) Construct without layout to measure layout separately
-    const cy = (state.cy = cytoscape({
-      container,
+    const cy = cytoscape({
+      containerEl,
       elements: toElements(graph),
       style: [],
-      wheelSensitivity: 0.15,
-    }));
+      wheelSensitivity: 0.1, // The default is 1, here it is reduced for smoother scaling.
+    });
+
+    window.cy = cy; // 让 bridge.js/外部能拿到实例
 
     applyStyles(cy);
 
@@ -139,7 +141,16 @@
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.key.toLowerCase() === "r") {
+      const isPlainR =
+        (e.key === "r" || e.key === "R") &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey;
+
+      if (isPlainR) {
+        e.preventDefault();
+        e.stopPropagation();
         const tReLayoutStart = performance.now();
         const rel = cy.layout({ name: "cose", animate: false });
         rel.on("layoutstop", () => {
@@ -196,6 +207,13 @@
 
   window.addEventListener("message", (event) => {
     const { type, payload } = event.data || {};
+    if (!type) {
+      return;
+    }
+    // Ignore the rendering messages of the AST and delegate them to bridge.js for handling.
+    if (type === "render") {
+      return;
+    }
     if (type === "render:graph" && payload && payload.nodes && payload.edges) {
       // update title and stats
       if (titleEl) {
@@ -214,6 +232,28 @@
       exportBlob("svg");
     }
   });
+
+  // 新增一个渲染入口，给 AST 数据用（bridge.js 会优先调用它）
+  window.renderFromAst = function (graph) {
+    const inst = window.cy;
+    if (!inst || typeof inst.add !== "function") {
+      console.error("[renderFromAst] Cytoscape instance not ready");
+      return;
+    }
+    const elements = [
+      ...graph.nodes.map((n) => ({ data: { id: n.id, label: n.id } })),
+      ...graph.edges.map((e) => ({
+        data: {
+          id: e.source + ">" + e.target,
+          source: e.source,
+          target: e.target,
+        },
+      })),
+    ];
+    inst.elements().remove();
+    inst.add(elements);
+    inst.layout({ name: "cose", animate: true, animationDuration: 300 }).run();
+  };
 
   post("ready");
 })();

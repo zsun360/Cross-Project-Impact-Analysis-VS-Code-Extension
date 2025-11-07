@@ -99,16 +99,20 @@
 
   function render(graph) {
     const t0 = performance.now();
-    const container = document.getElementById("cy");
+    const containerEl = document.getElementById("cy");
     state.cy?.destroy();
 
     // 1) Construct without layout to measure layout separately
-    const cy = (state.cy = cytoscape({
-      container,
+    const cy = cytoscape({
+      containerEl,
       elements: toElements(graph),
       style: [],
-      wheelSensitivity: 0.15,
-    }));
+      wheelSensitivity: 0.1, // The default is 1, here it is reduced for smoother scaling.
+    });
+
+    window.addEventListener("resize", () => cy.resize());
+
+    window.cy = cy; // 让 bridge.js/外部能拿到实例
 
     applyStyles(cy);
 
@@ -121,6 +125,10 @@
       log(`[metrics] layout=${(tLayoutEnd - tLayoutStart).toFixed(1)} ms`);
     });
     layout.run();
+
+    cy.resize();
+    cy.fit(undefined, 24); // 第二个参数是 padding（像素）
+    cy.center();
 
     // 3) Interactions (unchanged)
     cy.on("tap", "node", (evt) => {
@@ -139,7 +147,16 @@
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.key.toLowerCase() === "r") {
+      const isPlainR =
+        (e.key === "r" || e.key === "R") &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey;
+
+      if (isPlainR) {
+        e.preventDefault();
+        e.stopPropagation();
         const tReLayoutStart = performance.now();
         const rel = cy.layout({ name: "cose", animate: false });
         rel.on("layoutstop", () => {
@@ -196,16 +213,26 @@
 
   window.addEventListener("message", (event) => {
     const { type, payload } = event.data || {};
-    if (type === "render:graph" && payload && payload.nodes && payload.edges) {
+    if (!type) {
+      return;
+    }
+    if (type === "render:graph" && payload) {
       // update title and stats
       if (titleEl) {
-        titleEl.textContent = "Stage 04 — Import Graph (Live)";
+        titleEl.textContent = "stage_05_AST_Import_Parser";
       }
+      /*
       if (statsEl && payload.meta && payload.meta.stats) {
         const s = payload.meta.stats;
         statsEl.textContent = `files: ${s.files}  edges: ${s.edges}  scanned: ${s.scanned}`;
       }
-      render(payload);
+        */
+      window.renderFromAst(payload);
+      return;
+    }
+    // Ignore the rendering messages of the AST and delegate them to bridge.js for handling.
+    if (type === "render") {
+      return;
     }
     if (type === "export:png") {
       exportBlob("png");
@@ -214,6 +241,103 @@
       exportBlob("svg");
     }
   });
+
+  // 确保初始化时有实例，并暴露给外部
+  (function ensureInstance() {
+    if (window.cy && typeof window.cy.add === "function") {
+      return;
+    }
+    const el = document.getElementById("cy");
+    if (!el || typeof cytoscape !== "function") {
+      return;
+    }
+    window.cy = cytoscape({
+      container: el,
+      // 给一个基础样式，防止被空样式覆盖后什么都看不见
+      style: [
+        {
+          selector: "node",
+          style: {
+            "background-color": "#1e88e5",
+            width: 28,
+            height: 18,
+            label: "data(label)",
+            color: "#fff",
+            "font-size": 10,
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-outline-width": 2,
+            "text-outline-color": "#1565c0",
+          },
+        },
+        {
+          selector: "edge",
+          style: {
+            width: 2,
+            "line-color": "#90caf9",
+            "target-arrow-color": "#90caf9",
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier",
+          },
+        },
+        {
+          selector: ":selected",
+          style: {
+            "border-width": 2,
+            "border-color": "#ffca28",
+          },
+        },
+      ],
+      wheelSensitivity: 0.15,
+    });
+    window.addEventListener("resize", () => window.cy && window.cy.resize());
+  })();
+
+  // ✅ 统一的渲染入口（命令/bridge 都可以调它）
+  window.renderFromAst = function renderFromAst(graph) {
+    const cy = window.cy;
+    if (!cy || typeof cy.add !== "function") {
+      console.error("[renderFromAst] Cytoscape instance not ready");
+      return;
+    }
+
+    const elements = [
+      ...graph.nodes.map((n) => ({
+        group: "nodes",
+        data: { id: n.id, label: n.label || n.id },
+      })),
+      ...graph.edges.map((e) => ({
+        group: "edges",
+        data: {
+          id: e.id || `${e.source}>${e.target}`,
+          source: e.source,
+          target: e.target,
+        },
+      })),
+    ];
+
+    cy.batch(() => {
+      cy.elements().remove();
+      cy.add(elements);
+
+      // 深色背景下更清晰
+      cy.container().style.background = "#0f111a";
+
+      // 布局 + 视野对齐
+      cy.layout({ name: "cose", animate: false }).run();
+      cy.resize();
+      cy.fit(undefined, 32);
+      cy.center();
+    });
+
+    console.log(
+      "[renderFromAst] drawn",
+      cy.nodes().length,
+      "nodes /",
+      cy.edges().length,
+      "edges"
+    );
+  };
 
   post("ready");
 })();
