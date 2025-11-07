@@ -121,12 +121,6 @@
     // 屏蔽原生右键菜单
     cy.container().addEventListener("contextmenu", (e) => e.preventDefault());
 
-    // 右键（cxttap）→ openInEditor（与 Ctrl 逻辑彻底分离）
-    cy.on("cxttap", "node", (evt) => {
-      const n = evt.target;
-      post("openInEditor", { id: n.data("id") });
-    });
-
     // 左键：Ctrl/⌘ 高亮切换；普通点击走 drill
     cy.on("tap", "node", (evt) => {
       const e = evt.originalEvent;

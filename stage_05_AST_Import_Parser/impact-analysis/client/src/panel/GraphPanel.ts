@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path';
 
 // Webview host with message bridge
 
@@ -89,26 +88,28 @@ export class GraphPanel {
           this.output.appendLine(`[GraphPanel] Drill request for id: ${msg?.payload?.id ?? ''}`);
           vscode.window.showInformationMessage(`Drill: ${msg?.payload?.id ?? ''}`);
           break;
-        case 'openInEditor':
-          if (msg?.payload?.id) {
-            const fileUri = vscode.Uri.file(msg.payload.id);
-            const fsPath = fileUri.fsPath;
-            if (fsPath && path.isAbsolute(fsPath) && fs.existsSync(fsPath)) {
-              try {
-                const uri = vscode.Uri.file(fsPath);;
-                const doc = await vscode.workspace.openTextDocument(fileUri);
-                await vscode.window.showTextDocument(doc, { preview: true });
-              } catch (err) {
-                this.output.appendLine(`[openInEditor:error] : ${fsPath}. Error: ${err}`);
-                vscode.window.showErrorMessage(`Failed to open file: ${fsPath}`);
-              }
-            } else {
-              // Demo-friendly: do not throw, just inform gently.
-              this.output.appendLine(`[openInEditor:skip] Not a real file path or does not exist: ${fileUri}`);
-              vscode.window.showInformationMessage('Demo node (no local file to open)');
+        /*
+      case 'openInEditor':
+        if (msg?.payload?.id) {
+          const fileUri = vscode.Uri.file(msg.payload.id);
+          const fsPath = fileUri.fsPath;
+          if (fsPath && path.isAbsolute(fsPath) && fs.existsSync(fsPath)) {
+            try {
+              const uri = vscode.Uri.file(fsPath);;
+              const doc = await vscode.workspace.openTextDocument(fileUri);
+              await vscode.window.showTextDocument(doc, { preview: true });
+            } catch (err) {
+              this.output.appendLine(`[openInEditor:error] : ${fsPath}. Error: ${err}`);
+              vscode.window.showErrorMessage(`Failed to open file: ${fsPath}`);
             }
+          } else {
+            // Demo-friendly: do not throw, just inform gently.
+            this.output.appendLine(`[openInEditor:skip] Not a real file path or does not exist: ${fileUri}`);
+            vscode.window.showInformationMessage('Demo node (no local file to open)');
           }
-          break;
+        }
+        break;
+        */
         case 'export:result': {
           const kind = msg?.payload?.kind;
           const uri = await vscode.window.showSaveDialog({
