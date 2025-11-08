@@ -2,15 +2,15 @@
 import type { ModuleIR } from './types/ir';
 
 export const Methods = {
-  RunStage05Analysis: 'impact/runStage05Analysis',
+  RunAnalysis: 'impact/runAnalysis',
 } as const;
 
-export interface RunStage05Params {
+export interface RunParams {
   root: string;
   maxFiles: number;
 }
 
-export interface RunStage05Result {
+export interface RunResult {
   modules: ModuleIR[];
   stats: { total: number; parsed: number; cached: number; timeMs: number };
 }

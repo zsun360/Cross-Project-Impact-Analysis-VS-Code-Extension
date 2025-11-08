@@ -17,16 +17,13 @@ import {
   InitializeResult,
   TextDocumentSyncKind,
   TextDocuments,
-  Diagnostic,
-  DiagnosticSeverity,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import fg from 'fast-glob';
 import { fileURLToPath } from 'url';
 
-import {registerApi} from './api';
+import { registerApi } from './api';
 // -----------------------------------------------------------------------------
 // LSP Boilerplate
 // -----------------------------------------------------------------------------
@@ -60,11 +57,11 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
 connection.onInitialized(() => {
   connection.console.log('[impact] server initialized. workspaceRoot=' + (workspaceRootFsPath ?? 'N/A'));
+
 });
 
-// new command call
-registerApi(connection);
+  // new command call
+  registerApi(connection);
 // (Optional) wire up documents if you later want validations
 documents.listen(connection);
 connection.listen();
- 

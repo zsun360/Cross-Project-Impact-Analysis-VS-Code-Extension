@@ -38,10 +38,10 @@ export async function activate(context: ExtensionContext) {
 
   // The server is implemented in node
   const serverModule = Uri.joinPath(
-  context.extensionUri, '..', 'server', 'out', 'server.js'
-).fsPath;
+    context.extensionUri, '..', 'server', 'out', 'server.js'
+  ).fsPath;
 
-// 加一个存在性检查
+  // 加一个存在性检查
   if (!fs.existsSync(serverModule)) {
     output.appendLine(`Server entry not found: ${serverModule}`);
     window.showErrorMessage(`Server entry not found: ${serverModule}`);
@@ -55,14 +55,17 @@ export async function activate(context: ExtensionContext) {
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
+      options: {
+        execArgv: ['--nolazy', '--inspect=6009'], // 没有 --inspect，VS Code 没法 attach
+      }
     },
   };
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "typescript" }, {scheme: "file", language: "javascript"}, {scheme: "file", language: "python"}],
+    documentSelector: [{ scheme: "file", language: "typescript" }, { scheme: "file", language: "javascript" }, { scheme: "file", language: "python" }],
     initializationOptions: { debug: isDev, build },
-    synchronize: {configurationSection: 'impact'},
+    synchronize: { configurationSection: 'impact' },
   };
 
   // Start the client. This will also launch the server
@@ -72,7 +75,7 @@ export async function activate(context: ExtensionContext) {
     serverOptions,
     clientOptions
   );
-  
+
   // Start the client and expose it to Webview commands
   await client.start();
   context.subscriptions.push(client);

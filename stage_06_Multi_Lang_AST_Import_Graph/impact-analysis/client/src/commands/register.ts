@@ -1,181 +1,366 @@
-import { commands, ExtensionContext, window, OutputChannel, workspace, RelativePattern, Uri, FileSystemWatcher } from 'vscode';
+import {
+  commands,
+  ExtensionContext,
+  window,
+  OutputChannel,
+  workspace,
+  RelativePattern,
+  Uri,
+} from 'vscode';
 import * as path from 'path';
 
-import { Methods, RunStage05Params, RunStage05Result } from '../protocol';
+import { Methods, RunParams, RunResult } from '../protocol';
 import { getClient } from '../utils/lspClientApi';
 import { GraphPanel } from '../panel/GraphPanel';
 import { GraphModel } from '../types/graph';
+import { ModuleIR, ImportEntry } from '../types/ir';
 
-
-export function registerCommands(context: ExtensionContext, output: OutputChannel) {
-  const out = output!;
+export function registerCommands(
+  context: ExtensionContext,
+  output: OutputChannel
+) {
+  const out = output;
 
   context.subscriptions.push(
-    commands.registerCommand('impact.runStage05Analysis', async () => {
+    commands.registerCommand('impact.runAnalysis', async () => {
       const client = getClient();
-
       const folder = workspace.workspaceFolders?.[0];
-      if (!folder) { return window.showErrorMessage('No workspace opened.'); }
-      const root = folder.uri.fsPath ?? '';
-      const maxFiles = workspace.getConfiguration('impact')?.get<number>('maxFiles', 200);
 
-      // 1) 打开/获取 Webview
+      if (!folder) {
+        window.showErrorMessage('No workspace opened.');
+        return;
+      }
+
+      const root = folder.uri.fsPath;
+      const maxFiles = workspace
+        .getConfiguration('impact')
+        .get<number>('maxFiles', 200);
+
       const panel = GraphPanel.current ?? GraphPanel.show(context, out);
       await panel.whenReady?.();
 
-      // 2) 内联一个“分析→渲染”的函数（之后命令和文件监听都用它）
       const analyzeAndRender = async () => {
         try {
-          const params: RunStage05Params = { root, maxFiles };
-          const res = await client.sendRequest<RunStage05Result>(Methods.RunStage05Analysis, params);
-          // res.modules/graph 的具体字段按你 server 返回为准，这里取你之前显示的统计
-          // 假设 client 端已有一个 toGraphModel(res)
+          const params: RunParams = { root, maxFiles };
+          const res = await client.sendRequest<RunResult>(
+            Methods.RunAnalysis,
+            params
+          );
+
+          console.log('in analyzeAndRender() [client] result (trimmed)', {
+            modules: res.modules.map(m => ({
+              file: m.file,
+              lang: m.lang,
+              imports: (m.imports || []).map((im) => ({
+                source: im.source,
+                resolved: im.resolved,
+              })),
+            })),
+          });
+
           const graphModel = toGraphModel(res, root);
           const payload = toWebviewPayload(graphModel);
+
           panel.postMessage({ type: 'render:graph', payload });
-          window.setStatusBarMessage(`Stage05: parsed ${graphModel.stats.parsed} files, edges=${graphModel.edges.length}`, 1500);
+
+          window.setStatusBarMessage(
+            `parsed=${graphModel.stats.parsed}, edges=${graphModel.stats.edges}`,
+            1500
+          );
         } catch (err) {
-          window.showErrorMessage(`Stage05 analysis failed: ${String(err)}`);
+          console.error('[impact] analysis failed', err);
+          window.showErrorMessage(
+            '[Impact] analysis failed. See Output for details.'
+          );
         }
       };
 
-      // 3) 先跑一次（你点击命令时）
       await analyzeAndRender();
 
-      // 4) 注册文件监听（仅本工作区、忽略 node_modules/.git/dist，扩展：ts/js/py）
-      //    只注册一次：挂在 panel 的 disposables 上，面板关掉就自动释放
+      // ---- watcher: 变更时重新分析 ----
+      const pattern = new RelativePattern(
+        folder,
+        '**/*.{ts,tsx,js,jsx,py}'
+      );
+      const watcher = workspace.createFileSystemWatcher(
+        pattern,
+        false,
+        false,
+        false
+      );
 
-      let watcher: FileSystemWatcher | undefined;
-      if (!watcher) {
-        if (folder) {
-          const pattern = new RelativePattern(folder, '**/*.{ts,tsx,js,jsx,py}');
-          watcher = workspace.createFileSystemWatcher(pattern, false, false, false);
+      const shouldIgnore = (uri: Uri) => {
+        const p = uri.fsPath.replace(/\\/g, '/').toLowerCase();
+        return (
+          p.includes('/node_modules/') ||
+          p.includes('/.git/') ||
+          p.includes('/dist/') ||
+          p.includes('/out/')
+        );
+      };
 
-          const shouldIgnore = (uri: Uri) => {
-            const p = uri.fsPath.replace(/\\/g, '/').toLowerCase();
-            return p.includes('/node_modules/') || p.includes('/.git/') || p.includes('/dist/') || p.includes('/out/');
-          };
+      const debounced = debounce(async (uri?: Uri) => {
+        if (uri && shouldIgnore(uri)) { return; }
+        if ((panel).isDisposed) { return; }
+        await analyzeAndRender();
+      }, 800);
 
-          const debounced = debounce(async (uri?: Uri) => {
-            if (uri && shouldIgnore(uri)) { return; }
-            await analyzeAndRender();
-          }, 800);
+      watcher.onDidCreate(debounced);
+      watcher.onDidChange(debounced);
+      watcher.onDidDelete(debounced);
 
-          watcher.onDidCreate(debounced);
-          watcher.onDidChange(debounced);
-          watcher.onDidDelete(debounced);
-
-          context.subscriptions.push(watcher);
-
-        }
-      }
-    }
-    )
+      panel.onDispose?.(() => watcher.dispose());
+      context.subscriptions.push(watcher);
+    })
   );
 
+  // 可选：保持你原来的导出 SVG 命令
   context.subscriptions.push(
-    commands.registerCommand('impact.exportGraphPng', async () => {
-      const panel = GraphPanel.current ?? GraphPanel.show(context, out);
-      await panel.whenReady?.();
-      panel.postMessage({ type: 'export:png' });
-    }),
     commands.registerCommand('impact.exportGraphSvg', async () => {
-      const panel = GraphPanel.current ?? GraphPanel.show(context, out);
+      const panel = GraphPanel.current ?? GraphPanel.show(context, output);
       await panel.whenReady?.();
       panel.postMessage({ type: 'export:svg' });
-    }),
+    })
   );
-
 }
 
-/** 将 server 返回的 modules 汇总成文件级依赖图 */
-function toGraphModel(res: RunStage05Result, root: string): GraphModel {
-  const files = new Set<string>();
-  const edges = new Set<string>(); // 用 "src|dst" 去重
+/**
+ * 用统一规则把 ModuleIR[] 转成 GraphModel
+ * - file / resolved: 一律视为绝对路径
+ * - 前端节点 id：相对 workspaceRoot 的路径（美观）
+ */
 
-  const normalize = (abs: string) =>
-    path.relative(root, abs).replace(/\\/g, '/'); // Windows → POSIX
+function toGraphModel(res: RunResult, root: string): GraphModel {
+  const modules: ModuleIR[] = (res.modules || []) as ModuleIR[];
 
-  // 建一个可快速查找的文件集合（绝对路径 & 相对路径）
-  const known = new Set<string>();
-  for (const m of res.modules) {
-    known.add(m.file);
-    known.add(normalize(m.file));
-    files.add(normalize(m.file));
+  // 统一规范：所有内部比较用“规范化绝对路径”
+  const toAbs = (p: string): string =>
+    path.normalize(path.isAbsolute(p) ? p : path.resolve(root, p));
+
+  const toId = (abs: string): string =>
+    path.relative(root, abs).replace(/\\/g, '/');
+
+  // 1️⃣ 收集文件 -> 节点 id
+  const fileToId = new Map<string, string>();
+
+  for (const m of modules) {
+    if (!m.file) { continue; }
+    const abs = toAbs(m.file);
+    fileToId.set(abs, toId(abs));
   }
 
-  // 简单解析 import 路径 → 目标文件（支持 .ts/.js/.py 与 /index）
-  const tryResolve = (fromAbs: string, spec: string): string | null => {
-    if (!spec || spec.startsWith('node:') || spec.startsWith('http')) { return null; }
-    if (!spec.startsWith('.') && !spec.startsWith('/')) { return null; } // 先忽略包名
-    const fromDir = path.dirname(fromAbs);
+  const hasId = (abs: string) => fileToId.has(toAbs(abs));
 
-    const candidates = [
-      path.resolve(fromDir, spec),
-      path.resolve(fromDir, spec + '.ts'),
-      path.resolve(fromDir, spec + '.tsx'),
-      path.resolve(fromDir, spec + '.js'),
-      path.resolve(fromDir, spec + '.jsx'),
-      path.resolve(fromDir, spec + '.py'),
-      path.resolve(fromDir, spec, 'index.ts'),
-      path.resolve(fromDir, spec, 'index.js'),
-      path.resolve(fromDir, spec, '__init__.py')
-    ];
+  // 2️⃣ 基于 resolved / 相对路径构建边
+  const edgeKeys = new Set<string>();
 
-    for (const c of candidates) {
-      const rel = normalize(c);
-      if (known.has(rel)) { return rel; }
+  for (const m of modules) {
+    if (!m.file) { continue; }
+
+    const fromAbs = toAbs(m.file);
+    const fromId = fileToId.get(fromAbs);
+    if (!fromId) { continue; }
+
+    const imports: ImportEntry[] = m.imports || [];
+
+    for (const im of imports) {
+      let targetAbs: string | undefined;
+
+      // ① 优先使用统一的 resolved（Python / TS / JS / etc）
+      if (im.resolved) {
+        const candAbs = toAbs(im.resolved);
+        if (candAbs !== fromAbs && hasId(candAbs)) {
+          targetAbs = candAbs;
+        }
+      }
+
+      // ② 无 resolved 时，仅兜底处理 ./ ../（兼容旧逻辑）
+      if (!targetAbs && im.source) {
+        const s = im.source;
+        if (s.startsWith('./') || s.startsWith('../')) {
+          const candAbs = toAbs(path.resolve(path.dirname(fromAbs), s));
+          if (candAbs !== fromAbs && hasId(candAbs)) {
+            targetAbs = candAbs;
+          }
+        }
+      }
+
+      if (!targetAbs) { continue; }
+
+      const toIdVal = fileToId.get(toAbs(targetAbs));
+      if (!toIdVal || toIdVal === fromId) { continue; }
+
+      edgeKeys.add(`${fromId}|${toIdVal}`);
     }
-    return null;
+  }
+
+  // 3️⃣ 生成节点 / 边数组
+  const nodes = Array.from(fileToId.entries()).map(([abs, id]) => {
+    // 找到对应 module 的 lang
+    const mod = modules.find((m) => m.file && toAbs(m.file) === abs);
+    const lang = mod?.lang ?? 'unknown';
+    return { id, lang };
+  });
+
+  const edges = Array.from(edgeKeys).map((key) => {
+    const [source, target] = key.split('|');
+    return { source, target };
+  });
+
+  const s = (res).stats || {};
+
+  return {
+    nodes,
+    edges,
+    stats: {
+      files: nodes.length,
+      edges: edges.length,
+      parsed: s.parsed ?? modules.length,
+      cached: s.cached ?? 0,
+      timeMs: s.timeMs ?? 0,
+    },
   };
+}
 
-  for (const m of res.modules) {
-    const src = normalize(m.file);
-    for (const im of m.imports ?? []) {
-      const tgt = tryResolve(m.file, im.source);
-      if (!tgt) { continue; }
-      const key = `${src}|${tgt}`;
-      if (!edges.has(key)) { edges.add(key); }
-      files.add(src);
-      files.add(tgt);
+/*
+function toGraphModel(res: RunStage05Result, root: string): GraphModel {
+  const modules: ModuleIR[] = (res.modules || []) as ModuleIR[];
+
+  const toAbs = (p: string): string =>
+    path.isAbsolute(p) ? p : path.resolve(root, p);
+
+  const toId = (abs: string): string =>
+    path.relative(root, abs).replace(/\\/g, '/');
+
+  // 1) 建立文件 → 节点 id 映射
+  const fileToId = new Map<string, string>();
+  for (const m of modules) {
+    if (!m.file) { continue; }
+    const abs = toAbs(m.file);
+    fileToId.set(abs, toId(abs));
+  }
+
+  console.log('[client][toGraphModel] fileToId',
+    Array.from(fileToId.entries())
+  );
+
+  const hasId = (abs: string) => fileToId.has(abs);
+
+  // 2️⃣ 遍历 import，利用 resolved / 相对路径 建边
+  const edgeKeys = new Set<string>();
+
+  for (const m of modules) {
+    if (!m.file) { continue; }
+
+    const fromAbs = toAbs(m.file);
+    const fromId = fileToId.get(fromAbs);
+    if (!fromId) { continue; }
+
+    const imports: ImportEntry[] = m.imports || [];
+
+    for (const im of imports) {
+      let targetAbs: string | undefined;
+
+      // 优先：统一的 resolved（Python / TS / etc）
+      if (im.resolved) {
+        const candAbs = toAbs(im.resolved);
+        if (hasId(candAbs) && candAbs !== fromAbs) {
+          targetAbs = candAbs;
+        }
+      }
+
+      // 兜底：仅处理 ./ ../ 相对路径（兼容旧 TS/JS）
+      if (!targetAbs && im.source) {
+        const s = im.source;
+        if (s.startsWith('./') || s.startsWith('../')) {
+          const candAbs = path.resolve(path.dirname(fromAbs), s);
+          if (hasId(candAbs) && candAbs !== fromAbs) {
+            targetAbs = candAbs;
+          }
+        }
+      }
+
+      if (!targetAbs) { continue; }
+
+      const toIdVal = fileToId.get(targetAbs);
+      if (!toIdVal) { continue; }
+
+      edgeKeys.add(`${fromId}|${toIdVal}`);
     }
   }
 
-  const nodeArr = Array.from(files).map(id => ({ id }));
-  const edgeArr = Array.from(edges).map(k => {
+  console.log('[client][toGraphModel] edgeKeys',
+    Array.from(edgeKeys)
+  );
+
+  // 3️⃣ 组装 GraphModel
+  const nodes = Array.from(
+    new Set(Array.from(fileToId.values()))
+  ).map((id) => ({ id }));
+
+  const edges = Array.from(edgeKeys).map((k) => {
     const [source, target] = k.split('|');
     return { source, target };
   });
 
+  const stats = (res).stats || {};
+
+  console.log('[client][toGraphModel] graphModel', {
+    nodes: nodes.length,
+    edges: edges.length,
+  });
+
   return {
-    nodes: nodeArr,
-    edges: edgeArr,
+    nodes,
+    edges,
     stats: {
-      files: nodeArr.length,
-      edges: edgeArr.length,
-      parsed: res.stats.parsed,
-      cached: res.stats.cached,
-      timeMs: res.stats.timeMs
-    }
+      files: nodes.length,
+      edges: edges.length,
+      parsed: stats.parsed ?? modules.length,
+      cached: stats.cached ?? 0,
+      timeMs: stats.timeMs ?? 0,
+    },
   };
 }
+*/
 
-// 把我们内部的 GraphModel → webview 需要的 payload
+function basename(id: string): string {
+  const parts = id.split('/');
+  return parts[parts.length - 1] || id;
+}
+
+export interface GraphNodeView {
+  id: string;
+  label: string;
+  path: string;
+}
+
+/**
+ * Webview 需要的 payload
+ */
 function toWebviewPayload(graph: GraphModel) {
-  return {
-    nodes: graph.nodes.map(n => ({ id: n.id, label: n.id })),     // graph.js 用到 label
-    edges: graph.edges.map(e => ({ source: e.source, target: e.target })),
+  const payload = {
+    nodes: graph.nodes.map((n) => ({
+      id: n.id,
+      label: basename(n.id),
+      path: n.id,
+      lang: n.lang,
+    })),
+    edges: graph.edges,
     meta: {
-      stats: {
-        files: graph.stats.files,
-        edges: graph.stats.edges,
-        scanned: graph.stats.parsed   // graph.js 期望有 scanned 字段
-      }
-    }
+      stats: graph.stats
+    },
   };
+
+  console.log('[client][webview] payload', {
+    nodes: payload.nodes.length,
+    edges: payload.edges.length,
+  });
+
+  return payload;
 }
 
-// 强类型防抖（无 any、跨 Node/浏览器）
+/** 强类型防抖 */
 function debounce<Args extends unknown[], R>(
   fn: (...args: Args) => R,
   ms = 400
@@ -184,16 +369,23 @@ function debounce<Args extends unknown[], R>(
 
   const debounced = (...args: Args): void => {
     if (h) { clearTimeout(h); }
-    h = setTimeout(() => { fn(...args); }, ms);
+    h = setTimeout(() => {
+      fn(...args);
+    }, ms);
   };
 
   debounced.cancel = (): void => {
-    if (h) { clearTimeout(h); }
-    h = undefined;
+    if (h) {
+      clearTimeout(h);
+      h = undefined;
+    }
   };
 
   debounced.flush = (...args: Args): R => {
-    if (h) { clearTimeout(h); h = undefined; }
+    if (h) {
+      clearTimeout(h);
+      h = undefined;
+    }
     return fn(...args);
   };
 

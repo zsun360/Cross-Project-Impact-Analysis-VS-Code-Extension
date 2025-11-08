@@ -17,8 +17,8 @@
         "title": "Impact: Export Graph (SVG)"
       },
       {
-        "command": "impact.runStage05Analysis",
-        "title": "Run Stage05 Analysis",
+        "command": "impact.runAnalysis",
+        "title": "Run Analysis",
         "category": "Impact"
       }
     ]

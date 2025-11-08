@@ -51,6 +51,24 @@
           },
         },
         {
+          selector: 'node[lang = "ts"]',
+          style: {
+            "background-color": "#4FC3F7",
+          },
+        },
+        {
+          selector: 'node[lang = "js"]',
+          style: {
+            "background-color": "#FFEE58",
+          },
+        },
+        {
+          selector: 'node[lang = "py"]',
+          style: {
+            "background-color": "#81C784",
+          },
+        },
+        {
           selector: "edge",
           style: {
             width: 2,
@@ -184,6 +202,45 @@
       }
     });
 
+    // add custom tooltip
+    const tooltip = createTooltip();
+
+    // 鼠标移入节点：显示 tooltip
+    cy.on("mouseover", "node", (event) => {
+      const node = event.target;
+      const path = node.data("path");
+      if (!path) {
+        return;
+      }
+
+      const e = event.originalEvent;
+      if (!e) {
+        return;
+      }
+
+      tooltip.show(path, e.clientX, e.clientY);
+    });
+
+    // 在节点上移动：更新位置
+    cy.on("mousemove", "node", (event) => {
+      const e = event.originalEvent;
+      if (!e) {
+        return;
+      }
+
+      tooltip.move(e.clientX, e.clientY);
+    });
+
+    // 移出节点：隐藏 tooltip
+    cy.on("mouseout", "node", () => {
+      tooltip.hide();
+    });
+
+    // 视图缩放或拖动画布时隐藏 tooltip（避免残留）
+    cy.on("pan zoom", () => {
+      tooltip.hide();
+    });
+
     // export for DevTools
     window.cy = cy;
     state.cy = cy;
@@ -196,7 +253,12 @@
   function toElements(graph) {
     const nodes = (graph?.nodes ?? []).map((n) => ({
       group: "nodes",
-      data: { id: n.id, label: n.label || n.id },
+      data: {
+        id: n.id,
+        label: n.label || n.id,
+        path: n.path || n.id, // 换成 path
+        lang: n.lang,
+      },
     }));
     const edges = (graph?.edges ?? []).map((e) => ({
       group: "edges",
@@ -219,9 +281,9 @@
     if (titleEl) {
       titleEl.textContent = "stage_05_AST_Import_Parser";
     }
-    if (statsEl && graph?.meta?.stats) {
-      const s = graph.meta.stats;
-      statsEl.textContent = `files: ${s.files}  edges: ${s.edges}  scanned: ${s.scanned}`;
+    const stats = graph?.meta?.stats || graph?.stats;
+    if (statsEl && stats) {
+      statsEl.textContent = `files: ${stats.files}  edges: ${stats.edges}  parsed : ${stats.parsed}`;
     }
 
     const t0 = performance.now();
@@ -288,6 +350,45 @@
       return;
     }
   });
+
+  function createTooltip() {
+    const el = document.createElement("div");
+    el.className = "impact-tooltip";
+    document.body.appendChild(el);
+
+    let visible = false;
+
+    function show(text, x, y) {
+      if (!text) {
+        return;
+      }
+      el.textContent = text;
+      el.style.left = `${x + 12}px`;
+      el.style.top = `${y + 12}px`;
+      if (!visible) {
+        el.style.display = "block";
+        visible = true;
+      }
+    }
+
+    function move(x, y) {
+      if (!visible) {
+        return;
+      }
+      el.style.left = `${x + 12}px`;
+      el.style.top = `${y + 12}px`;
+    }
+
+    function hide() {
+      if (!visible) {
+        return;
+      }
+      el.style.display = "none";
+      visible = false;
+    }
+
+    return { show, move, hide };
+  }
 
   // ready
   ensureInstance();

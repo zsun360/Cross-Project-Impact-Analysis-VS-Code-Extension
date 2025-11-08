@@ -16,6 +16,7 @@ export class GraphPanel {
   private _readyResolve!: () => void;
   private _readyPromise: Promise<void>;
   private output: vscode.OutputChannel;
+  public isDisposed = false;
 
   static show(context: vscode.ExtensionContext, output: vscode.OutputChannel) {
     const column = vscode.ViewColumn.Beside;
@@ -152,6 +153,7 @@ export class GraphPanel {
 
   // 这个方法是用来销毁整个面板（由 VS Code 框架触发时调用的）
   dispose() {
+    this.isDisposed = true; // 标记为已销毁
     GraphPanel.current = undefined;
     while (this.disposables.length) {
       const d = this.disposables.pop();

@@ -67,7 +67,7 @@ export async function analyzeProject(
 			// 2) parse via proper AST
 			let ir: ModuleIR;
 			if (f.endsWith('.py')) {
-				ir = parsePyFile(f);
+				ir = parsePyFile(f, root);
 			} else {
 				// ts / tsx / js / jsx 都走 ts-morph
 				ir = await parseTSFile(f);
