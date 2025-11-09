@@ -18,11 +18,12 @@
   const state = {
     cy: null,
     inited: false,
-    viewstack: [], // 预留给后面返回上层用 [{ kind: 'project', elements }, { kind: 'symbol', elements }]
+    viewStack: [], // [{ kind: 'project' | 'symbol', elements, meta }]
     viewMode: "project", // 'project' | 'symbol'
   };
-  const titleEl = document.getElementById("stage-title");
-  const statsEl = document.getElementById("stage-stats");
+
+  const titleEl = document.getElementById("impact-title");
+  const metaEl = document.getElementById("impact-meta");
 
   // ---------- init once ----------
 
@@ -274,8 +275,32 @@
     return cy;
   }
 
+  function setHeaderForProject(graph) {
+    if (!titleEl || !metaEl) {
+      return;
+    }
+    titleEl.textContent =
+      "Cross-Project Impact Analysis — Interactive Visualization";
+
+    const files = graph.files?.length ?? 0;
+    const edges = graph.edges?.length ?? 0;
+    const parsed = graph.parsed ?? files;
+    metaEl.textContent = `  files: ${files}   edges: ${edges}   parsed: ${parsed}`;
+  }
+
+  function setHeaderForSymbol(result) {
+    if (!titleEl || !metaEl) {
+      return;
+    }
+    const fileName =
+      (result?.file || "").split(/[\\/]/).pop() || result?.file || "";
+    const count = (result?.nodes || []).length;
+    titleEl.textContent = `Symbols in ${fileName}`;
+    metaEl.textContent = `  symbols: ${count}`;
+  }
+
   // ---------- data mapping ----------
-  function toElements(graph) {
+  function buildProjectElements(graph) {
     const nodes = (graph?.nodes ?? []).map((n) => ({
       group: "nodes",
       data: {
@@ -300,22 +325,28 @@
   function renderFromAst(graph) {
     const cy = ensureInstance();
     if (!cy) {
+      // console.log("[view] renderFromAst: no cy");
       return;
     }
 
-    state.viewMode = "project";
-    state.viewstack = [{ kind: "project", graph }]; // 预留，将来做返回用
-
-    if (titleEl) {
-      titleEl.textContent = "AST_Import_Parser";
-    }
-    const stats = graph?.meta?.stats || graph?.stats;
-    if (statsEl && stats) {
-      statsEl.textContent = `files: ${stats.files}  edges: ${stats.edges}  parsed : ${stats.parsed}`;
-    }
-
     const t0 = performance.now();
-    const elements = toElements(graph);
+    const elements = buildProjectElements(graph);
+
+    console.log("[view] renderFromAst: elements.length =", elements?.length);
+
+    // 做一个浅拷贝快照，避免后续修改污染
+    const snapshot = elements.map((e) => ({
+      ...e,
+      data: { ...e.data },
+      position: e.position ? { ...e.position } : undefined,
+    }));
+
+    state.viewMode = "project";
+    state.viewStack = [
+      { kind: "project", elements: snapshot, meta: { graph } },
+    ]; // 每次重新 render 项目图，就把栈重置成「仅有顶层」
+
+    setHeaderForProject(graph); // 🔑 顶部显示类似: "AST_Import_Parser files: ..."
 
     cy.batch(() => {
       cy.elements().remove();
@@ -323,6 +354,11 @@
       // 清理任何残留高亮/淡化
       cy.elements().removeClass("hl").removeClass("dim");
     });
+
+    console.log(
+      "[view] renderFromAst: cy elements after add =",
+      cy.elements().length
+    );
 
     // 布局 + 视野
     const tLayoutStart = performance.now();
@@ -336,6 +372,8 @@
     });
     layout.run();
 
+    removeBackButtonIfAny();
+
     const t1 = performance.now();
     log(
       `[metrics] render(total)=${(t1 - t0).toFixed(1)} ms nodes=${
@@ -345,24 +383,40 @@
   }
 
   function renderSymbolGraph(result) {
+    console.log(
+      "[view] renderSymbolGraph called with",
+      (result?.nodes || []).length,
+      "nodes"
+    );
+
     const cy = ensureInstance();
     if (!cy) {
       return;
     }
 
-    state.viewMode = "symbol";
-    state.viewstack.push({ kind: "symbol", graph: result });
-
-    if (titleEl) {
-      const short = (result.file || "").split(/[\\/]/).pop() || result.file;
-      titleEl.textContent = `Symbols in ${short}`;
-    }
-    if (statsEl) {
-      statsEl.textContent = `symbols: ${result.nodes?.length ?? 0}`;
-    }
-
     const t0 = performance.now();
     const elements = buildSymbolElements(result);
+
+    const snapshot = elements.map((e) => ({
+      ...e,
+      data: { ...e.data },
+      position: e.position ? { ...e.position } : undefined,
+    }));
+
+    state.viewMode = "symbol";
+    // 压栈（在项目图之上）
+    state.viewStack.push({
+      kind: "symbol",
+      elements: snapshot,
+      meta: { result },
+    });
+
+    console.log(
+      "[view] renderSymbolGraph -> push symbol, stack:",
+      state.viewStack.map((v) => v.kind)
+    );
+
+    setHeaderForSymbol(result); // 🔑 顶部显示: "Symbols in main.ts  symbols: 1"
 
     cy.batch(() => {
       cy.elements().remove();
@@ -382,6 +436,8 @@
       cy.center();
     });
     layout.run();
+
+    ensureBackButton(); // add back button in symbol view
 
     const t1 = performance.now();
     log(
@@ -527,6 +583,106 @@
     }
 
     return { show, move, hide };
+  }
+
+  function ensureBackButton() {
+    let btn = document.getElementById("impact-back-btn");
+    if (btn) {
+      return;
+    } // 已经有就不重复加
+
+    btn = document.createElement("button");
+    btn.id = "impact-back-btn";
+    btn.textContent = "← Back";
+    btn.style.position = "absolute";
+    btn.style.top = "6px";
+    btn.style.left = "8px";
+    btn.style.zIndex = "9999";
+    btn.style.padding = "2px 10px";
+    btn.style.borderRadius = "6px";
+    btn.style.border = "none";
+    btn.style.cursor = "pointer";
+    btn.style.background = "#222";
+    btn.style.color = "#fff";
+    btn.style.opacity = "0.9";
+
+    btn.onclick = () => {
+      console.log(
+        "[back] clicked, stack before:",
+        state.viewStack.map((v) => v.kind)
+      );
+
+      if (!state.viewStack || state.viewStack.length <= 1) {
+        console.log("[back] nothing to pop");
+        return;
+      }
+
+      const popped = state.viewStack.pop();
+      const prev = state.viewStack[state.viewStack.length - 1];
+
+      console.log(
+        "[back] popped: %o prev: %o stack now: %o",
+        popped?.kind,
+        prev?.kind,
+        state.viewStack.map((v) => v.kind)
+      );
+
+      if (!prev) {
+        btn.remove();
+        return;
+      }
+
+      // 如果上一层是 project，直接用 meta.graph 全量重渲染
+      if (prev.kind === "project" && prev.meta?.graph) {
+        renderFromAst(prev.meta.graph);
+        // renderFromAst 里会：
+        //   - 重置 viewStack = [{ kind:'project', ... }]
+        //   - 更新 header
+        //   - 清除 Back 按钮（removeBackButtonIfAny）
+        return;
+      }
+
+      // 如果未来要支持多级 symbol 栈，再走通用恢复逻辑
+      if (prev.elements) {
+        const cy = ensureInstance();
+        if (!cy) {
+          return;
+        }
+
+        cy.batch(() => {
+          cy.elements().remove();
+          cy.add(prev.elements);
+          cy.elements().removeClass("hl").removeClass("dim");
+        });
+
+        cy.resize();
+        cy.fit(undefined, 32);
+        cy.center();
+
+        if (prev.kind === "symbol" && prev.meta?.result) {
+          setHeaderForSymbol(prev.meta.result);
+        }
+
+        if (state.viewStack.length === 1) {
+          btn.remove();
+        }
+      } else {
+        console.log("[back] prev has no elements/meta, nothing to restore");
+        if (state.viewStack.length === 1) {
+          btn.remove();
+        }
+      }
+    };
+
+    document.body.appendChild(btn);
+  }
+
+  function removeBackButtonIfAny() {
+    const btn = document.getElementById("impact-back-btn");
+    if (btn) {
+      btn.remove();
+      console.log("[ui] removed back button");
+    }
   }
 
   // ready

@@ -1,4 +1,4 @@
-// ModuleIR v0 — Stage 05 authoritative shape
+// ModuleIR v0
 export interface ModuleIR {
   file: string;                                   // 绝对路径
   lang: 'ts' | 'js' | 'py';
