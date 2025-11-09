@@ -8,5 +8,6 @@ export interface GraphModel {
 	nodes: GraphNode[];
 	edges: { source: string; target: string }[];
 	stats: { files: number; edges: number; parsed: number; cached: number; timeMs: number };
+	workspaceRoot?: string;
 }
 

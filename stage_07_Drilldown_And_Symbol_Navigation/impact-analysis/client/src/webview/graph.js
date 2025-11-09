@@ -18,9 +18,47 @@
   const state = {
     cy: null,
     inited: false,
-    viewStack: [], // [{ kind: 'project' | 'symbol', elements, meta }]
+    workspaceRoot: "",
     viewMode: "project", // 'project' | 'symbol'
+    viewStack: [], // [{ kind: 'project' | 'symbol', elements, meta }]
   };
+
+  function normalizePath(p) {
+    return (p || "").replace(/\\/g, "/");
+  }
+
+  function guessCommonRoot(files) {
+    const arr = (files || []).map(normalizePath).filter(Boolean);
+    if (arr.length === 0) {
+      return "";
+    }
+
+    let prefix = arr[0];
+    for (let i = 1; i < arr.length; i++) {
+      const p = arr[i];
+      while (prefix && !p.startsWith(prefix)) {
+        const idx = prefix.lastIndexOf("/");
+        prefix = idx > 0 ? prefix.slice(0, idx) : "";
+      }
+      if (!prefix) {
+        break;
+      }
+    }
+    // 截到目录边界
+    const idx = prefix.lastIndexOf("/");
+    return idx > 0 ? prefix.slice(0, idx) : prefix;
+  }
+
+  function toRelativePath(file, workspaceRoot) {
+    const full = normalizePath(file);
+    const root = normalizePath(workspaceRoot || "");
+    if (root && full.startsWith(root)) {
+      return full.slice(root.length).replace(/^\/+/, "") || full;
+    }
+    // fallback：保底用最后两级，避免太长
+    const parts = full.split("/");
+    return parts.slice(-2).join("/");
+  }
 
   const titleEl = document.getElementById("impact-title");
   const metaEl = document.getElementById("impact-meta");
@@ -104,6 +142,31 @@
             "line-color": "#ffca28",
             "target-arrow-color": "#ffca28",
             width: 3,
+          },
+        },
+        {
+          selector: "node",
+          style: {
+            "transition-property":
+              "background-color, color, border-width, font-size",
+            "transition-duration": "150ms",
+            "transition-timing-function": "ease-out",
+          },
+        },
+        {
+          selector: "node.hover",
+          style: {
+            "border-width": 3,
+            "font-size": "16px",
+            "background-color": "#3da9ff",
+          },
+        },
+        {
+          selector: "edge.hover",
+          style: {
+            width: 4,
+            "line-color": "#7cc4ff",
+            "target-arrow-color": "#7cc4ff",
           },
         },
         // dim styles
@@ -222,49 +285,33 @@
       }
     });
 
+    cy.on("mouseover", "node", (e) => {
+      const node = e.target;
+      node.addClass("hover");
+
+      // 高亮相关边（可选）
+      node.connectedEdges().addClass("hover");
+
+      showTooltipForNode(node, e.renderedPosition || e.position);
+    });
+
+    cy.on("mouseout", "node", (e) => {
+      const node = e.target;
+      node.removeClass("hover");
+      node.connectedEdges().removeClass("hover");
+
+      hideTooltip();
+    });
+
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         clearHighlight();
       }
     });
 
-    // add custom tooltip
-    const tooltip = createTooltip();
-
-    // 鼠标移入节点：显示 tooltip
-    cy.on("mouseover", "node", (event) => {
-      const node = event.target;
-      const path = node.data("path");
-      if (!path) {
-        return;
-      }
-
-      const e = event.originalEvent;
-      if (!e) {
-        return;
-      }
-
-      tooltip.show(path, e.clientX, e.clientY);
-    });
-
-    // 在节点上移动：更新位置
-    cy.on("mousemove", "node", (event) => {
-      const e = event.originalEvent;
-      if (!e) {
-        return;
-      }
-
-      tooltip.move(e.clientX, e.clientY);
-    });
-
-    // 移出节点：隐藏 tooltip
-    cy.on("mouseout", "node", () => {
-      tooltip.hide();
-    });
-
     // 视图缩放或拖动画布时隐藏 tooltip（避免残留）
     cy.on("pan zoom", () => {
-      tooltip.hide();
+      hideTooltip();
     });
 
     // export for DevTools
@@ -327,6 +374,17 @@
     if (!cy) {
       // console.log("[view] renderFromAst: no cy");
       return;
+    }
+
+    console.log(`graph =>>>> ${JSON.stringify(graph)}`);
+    // 推一次 workspaceRoot（只在还没设置时）
+    if (graph.workspaceRoot) {
+      state.workspaceRoot = normalizePath(graph.workspaceRoot);
+    } else if (!state.workspaceRoot) {
+      const files = (graph.modules || graph.files || [])
+        .map((m) => m.file)
+        .filter(Boolean);
+      state.workspaceRoot = guessCommonRoot(files);
     }
 
     const t0 = performance.now();
@@ -392,6 +450,10 @@
     const cy = ensureInstance();
     if (!cy) {
       return;
+    }
+
+    if (result.workspaceRoot && !state.workspaceRoot) {
+      state.workspaceRoot = normalizePath(result.workspaceRoot);
     }
 
     const t0 = performance.now();
@@ -521,6 +583,81 @@
     post("export:result", { kind: "png", dataUrl }); // 兼容另一条回传协议
   }
 
+  function showTooltipForNode(node, renderedPos) {
+    const d = node.data() || {};
+    const kind = d.kind || "";
+    const label = d.label || d.name || "";
+    const file = d.file || d.path || "";
+
+    const rel = file ? toRelativePath(file, state.workspaceRoot) : "";
+
+    let text = label;
+    if (kind) {
+      text += `  (${kind})`;
+    }
+
+    if (d.type === "file" || d.isFile) {
+      // 文件节点：只有当相对路径和 label 不同，才补第二行
+      if (rel && rel !== label) {
+        text = `${label}\n${rel}`;
+      }
+    } else if (rel) {
+      // 符号节点：第二行显示所在文件相对路径
+      text += `\n${rel}`;
+    }
+
+    showTooltip(text, renderedPos || { x: 0, y: 0 });
+  }
+
+  let tooltipEl = null;
+
+  function ensureTooltip() {
+    if (tooltipEl) {
+      return tooltipEl;
+    }
+    tooltipEl = document.createElement("div");
+    tooltipEl.id = "impact-tooltip";
+    Object.assign(tooltipEl.style, {
+      position: "fixed",
+      zIndex: 9999,
+      padding: "4px 8px",
+      borderRadius: "6px",
+      fontSize: "11px",
+      color: "#fff",
+      background: "rgba(0,0,0,0.82)",
+      pointerEvents: "none",
+      opacity: "0",
+      transform: "translateY(-4px)",
+      transition: "opacity 100ms ease-out, transform 100ms ease-out",
+    });
+    document.body.appendChild(tooltipEl);
+    return tooltipEl;
+  }
+
+  function showTooltip(text, pos) {
+    const el = ensureTooltip();
+    el.textContent = text || "";
+    if (!text) {
+      el.style.opacity = "0";
+      return;
+    }
+
+    const offsetX = 10;
+    const offsetY = 10;
+    el.style.left = `${pos.x + offsetX}px`;
+    el.style.top = `${pos.y + offsetY}px`;
+    el.style.opacity = "1";
+    el.style.transform = "translateY(0)";
+  }
+
+  function hideTooltip() {
+    if (!tooltipEl) {
+      return;
+    }
+    tooltipEl.style.opacity = "0";
+    tooltipEl.style.transform = "translateY(-4px)";
+  }
+
   // ---------- message pump ----------
   window.addEventListener("message", (e) => {
     const { type, payload } = e.data || {};
@@ -545,45 +682,6 @@
       return;
     }
   });
-
-  function createTooltip() {
-    const el = document.createElement("div");
-    el.className = "impact-tooltip";
-    document.body.appendChild(el);
-
-    let visible = false;
-
-    function show(text, x, y) {
-      if (!text) {
-        return;
-      }
-      el.textContent = text;
-      el.style.left = `${x + 12}px`;
-      el.style.top = `${y + 12}px`;
-      if (!visible) {
-        el.style.display = "block";
-        visible = true;
-      }
-    }
-
-    function move(x, y) {
-      if (!visible) {
-        return;
-      }
-      el.style.left = `${x + 12}px`;
-      el.style.top = `${y + 12}px`;
-    }
-
-    function hide() {
-      if (!visible) {
-        return;
-      }
-      el.style.display = "none";
-      visible = false;
-    }
-
-    return { show, move, hide };
-  }
 
   function ensureBackButton() {
     let btn = document.getElementById("impact-back-btn");

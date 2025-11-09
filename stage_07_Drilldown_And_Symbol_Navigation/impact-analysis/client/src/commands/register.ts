@@ -47,16 +47,7 @@ export function registerCommands(
             params
           );
 
-          console.log('in analyzeAndRender() [client] result (trimmed)', {
-            modules: res.modules.map(m => ({
-              file: m.file,
-              lang: m.lang,
-              imports: (m.imports || []).map((im) => ({
-                source: im.source,
-                resolved: im.resolved,
-              })),
-            })),
-          });
+          console.log(`[client] register.ts registerCommands() res =>>> ${JSON.stringify(res)}`);
 
           const graphModel = toGraphModel(res, root);
           const payload = toWebviewPayload(graphModel);
@@ -127,9 +118,7 @@ export function registerCommands(
 /**
  * 用统一规则把 ModuleIR[] 转成 GraphModel
  * - file / resolved: 一律视为绝对路径
- * - 前端节点 id：相对 workspaceRoot 的路径（美观）
  */
-
 function toGraphModel(res: RunResult, root: string): GraphModel {
   const modules: ModuleIR[] = (res.modules || []) as ModuleIR[];
 
@@ -140,7 +129,7 @@ function toGraphModel(res: RunResult, root: string): GraphModel {
   const toId = (abs: string): string =>
     path.relative(root, abs).replace(/\\/g, '/');
 
-  // 1️⃣ 收集文件 -> 节点 id
+  // 1) 收集文件 -> 节点 id
   const fileToId = new Map<string, string>();
 
   for (const m of modules) {
@@ -151,7 +140,7 @@ function toGraphModel(res: RunResult, root: string): GraphModel {
 
   const hasId = (abs: string) => fileToId.has(toAbs(abs));
 
-  // 2️⃣ 基于 resolved / 相对路径构建边
+  // 2) 基于 resolved / 相对路径构建边
   const edgeKeys = new Set<string>();
 
   for (const m of modules) {
@@ -194,7 +183,7 @@ function toGraphModel(res: RunResult, root: string): GraphModel {
     }
   }
 
-  // 3️⃣ 生成节点 / 边数组
+  // 3) 生成节点 / 边数组
   const nodes = Array.from(fileToId.entries()).map(([abs, id]) => {
     // 找到对应 module 的 lang
     const mod = modules.find((m) => m.file && toAbs(m.file) === abs);
@@ -219,6 +208,7 @@ function toGraphModel(res: RunResult, root: string): GraphModel {
       cached: s.cached ?? 0,
       timeMs: s.timeMs ?? 0,
     },
+    workspaceRoot: root
   };
 }
 
@@ -350,12 +340,10 @@ function toWebviewPayload(graph: GraphModel) {
     meta: {
       stats: graph.stats
     },
+    workspaceRoot: graph.workspaceRoot
   };
 
-  console.log('[client][webview] payload', {
-    nodes: payload.nodes.length,
-    edges: payload.edges.length,
-  });
+  console.log(`[client][webview] payload =>>> ${JSON.stringify(payload)}`);
 
   return payload;
 }

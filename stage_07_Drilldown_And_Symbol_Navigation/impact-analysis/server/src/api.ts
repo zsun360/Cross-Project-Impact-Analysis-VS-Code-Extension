@@ -10,22 +10,13 @@ export function registerApi(connection: Connection) {
   connection.onRequest<RunResult, RunParams>(
     Methods.RunAnalysis,
     async (params) => {
-      console.log('[server] api.ts registerApi(): RunAnalysis called with', params);
+      console.log(`[server] api.ts registerApi(): params =>>> ${JSON.stringify(params)}`);
       const { root, maxFiles } = params;
       const { modules, stats } = await analyzeProject(root, maxFiles);
 
-      console.log('[server] api.ts registerApi(): RunAnalysis done',
-        modules.map((m) => ({
-          file: m.file,
-          lang: m.lang,
-          imports: (m.imports || []).map((im) => JSON.stringify({
-            source: im.source,
-            resolved: im.resolved,
-          })),
-        }))
-      );
+      console.log(`[server] api.ts registerApi(): modules =>>> ${JSON.stringify(modules)} stats =>>> ${JSON.stringify(stats)}`);
 
-      return { modules, stats };
+      return { modules, stats, workspaceRoot: root };
     }
   );
 
@@ -55,7 +46,7 @@ export function registerApi(connection: Connection) {
 
       const edges: SymbolEdge[] = []; // 先留空，占位，后面可以加调用/引用关系
 
-      return { file, nodes, edges };
+      return { file, nodes, edges, workspaceRoot: params.workspaceRoot };
     }
   );
 }

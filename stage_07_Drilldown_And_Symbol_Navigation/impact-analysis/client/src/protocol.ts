@@ -14,6 +14,7 @@ export interface RunParams {
 export interface RunResult {
   modules: ModuleIR[];
   stats: { total: number; parsed: number; cached: number; timeMs: number };
+  workspaceRoot?: string
 }
  
 export interface SymbolGraphParams {
@@ -38,4 +39,5 @@ export interface SymbolGraphResult {
   file: string;
   nodes: SymbolNode[];
   edges: SymbolEdge[];
+  workspaceRoot?: string
 }
