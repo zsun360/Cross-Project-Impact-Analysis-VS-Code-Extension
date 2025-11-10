@@ -459,17 +459,11 @@
     const t0 = performance.now();
     const elements = buildSymbolElements(result);
 
-    const snapshot = elements.map((e) => ({
-      ...e,
-      data: { ...e.data },
-      position: e.position ? { ...e.position } : undefined,
-    }));
-
     state.viewMode = "symbol";
     // 压栈（在项目图之上）
     state.viewStack.push({
       kind: "symbol",
-      elements: snapshot,
+      elements,
       meta: { result },
     });
 
@@ -509,9 +503,12 @@
     );
   }
 
+  /*
   function buildSymbolElements(result) {
     const file = result.file || "";
     const fileId = file;
+
+    const elements = [];
     const nodes = [];
     const edges = [];
 
@@ -552,20 +549,145 @@
       });
     });
 
-    // 预留传入 edges（将来做引用/调用关系时用）
-    (result.edges || []).forEach((e) => {
+    // ========= 新增：类 -> 方法 的关系 =========
+
+    // 1. 根据符号名建立索引（方便用名字找到类节点）
+    const nodeByName = new Map();
+    for (const n of nodes) {
+      const name = n.data?.name;
+      if (name) {
+        nodeByName.set(name, n);
+      }
+    }
+
+    // 2. 遍历所有方法符号，找形如 ClassName.method 的，连一条 edge
+    for (const n of nodes) {
+      const kind = n.data?.kind;
+      const fullName = n.data?.name;
+      if (kind !== "method" || typeof fullName !== "string") {
+        continue;
+      }
+
+      const dot = fullName.indexOf(".");
+      if (dot <= 0) {
+        continue;
+      } // 没有前缀类名就不管
+
+      const className = fullName.slice(0, dot);
+      const classNode = nodeByName.get(className);
+      if (!classNode) {
+        continue;
+      }
+
+      // 使用已有 id，避免乱造
+      const sourceId = classNode.data.id;
+      const targetId = n.data.id;
+
+      if (!sourceId || !targetId) {
+        continue;
+      }
+
       edges.push({
-        group: "edges",
         data: {
-          id: e.id || `${e.source}->${e.target}`,
-          source: e.source,
-          target: e.target,
-          kind: e.kind || "ref",
+          id: `member:${sourceId}->${targetId}`,
+          source: sourceId,
+          target: targetId,
+          kind: "member-of",
         },
+        classes: "symbol-edge member-of",
       });
+    }
+    console.log(`nodes =>>> ${JSON.stringify(nodes)}`);
+    // ========= 结束：把 nodes + edges 合起来 =========
+    elements.push(...nodes, ...edges);
+    return elements;
+  }
+*/
+
+  function buildSymbolElements(result) {
+    const elements = [];
+
+    const filePath = result.file;
+    const fileLabel =
+      (filePath || "").split(/[\\/]/).pop() || filePath || "file";
+    const fileId = `sym-file:${filePath}`;
+
+    // 1) 根文件节点（符号视图的顶点）
+    elements.push({
+      data: {
+        id: fileId,
+        label: fileLabel,
+        kind: "file",
+        file: filePath,
+      },
+      classes: "file-node symbol-root",
     });
 
-    return [...nodes, ...edges];
+    const symbolNodeId = (name) => `sym:${name}`;
+    const symByName = new Map();
+
+    // 2) 符号节点 + 文件 -> 顶层符号 边
+    for (const s of result.nodes || []) {
+      const id = symbolNodeId(s.name);
+      symByName.set(s.name, s);
+
+      elements.push({
+        data: {
+          id,
+          label: s.name,
+          kind: s.kind,
+          file: filePath,
+          loc: s.loc || undefined,
+        },
+        classes: "symbol-node",
+      });
+
+      // 只连到顶层导出：函数 / 类 / 变量等
+      if (s.kind === "function" || s.kind === "class" || s.kind === "var") {
+        elements.push({
+          data: {
+            id: `e:${fileId}->${id}`,
+            source: fileId,
+            target: id,
+            kind: "declares",
+          },
+          classes: "edge-declares",
+        });
+      }
+    }
+
+    // 3) 类 -> 方法 边（Python 这套）
+    for (const [name, s] of symByName) {
+      if (s.kind !== "method") {
+        continue;
+      }
+
+      const dot = name.indexOf(".");
+      if (dot <= 0) {
+        continue;
+      }
+
+      const className = name.slice(0, dot);
+      const classSym = symByName.get(className);
+      if (!classSym || classSym.kind !== "class") {
+        continue;
+      }
+
+      const classNodeId = symbolNodeId(className);
+      const methodNodeId = symbolNodeId(name);
+
+      elements.push({
+        data: {
+          id: `e:${classNodeId}->${methodNodeId}`,
+          source: classNodeId,
+          target: methodNodeId,
+          kind: "member-of",
+        },
+        classes: "edge-member-of",
+      });
+    }
+
+    return elements;
   }
 
   // ---------- export ----------
