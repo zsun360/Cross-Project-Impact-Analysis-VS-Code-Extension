@@ -701,7 +701,7 @@
       scale: 2,
       bg: getComputedStyle(document.body).backgroundColor,
     });
-    post("savePNG", { dataUrl, suggested: "impact-graph.png" });
+    // post("savePNG", { dataUrl, suggested: "impact-graph.png" });
     post("export:result", { kind: "png", dataUrl }); // 兼容另一条回传协议
   }
 

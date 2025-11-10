@@ -215,6 +215,11 @@ export class GraphPanel {
     this.panel.webview.postMessage(message);
   }
 
+  public exportPng() {
+    // 发消息给 webview，让它自己用 cy.png() 导出
+    this.postMessage({ type: 'export:png' });
+  }
+
   // 这个方法是用来销毁整个面板（由 VS Code 框架触发时调用的）
   dispose() {
     this.isDisposed = true; // 标记为已销毁

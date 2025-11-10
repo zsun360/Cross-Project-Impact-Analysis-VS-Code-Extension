@@ -13,10 +13,6 @@
         "title": "Impact: Export Graph (PNG)"
       },
       {
-        "command": "impact.exportGraphSvg",
-        "title": "Impact: Export Graph (SVG)"
-      },
-      {
         "command": "impact.runAnalysis",
         "title": "Run Analysis",
         "category": "Impact"

@@ -105,14 +105,23 @@ export function registerCommands(
     })
   );
 
-  // 可选：保持你原来的导出 SVG 命令
   context.subscriptions.push(
-    commands.registerCommand('impact.exportGraphSvg', async () => {
-      const panel = GraphPanel.current ?? GraphPanel.show(context, output);
-      await panel.whenReady?.();
-      panel.postMessage({ type: 'export:svg' });
-    })
+    commands.registerCommand(
+      'impact.exportGraphPng',
+      async () => {
+        const panel = GraphPanel.current;
+        if (!panel) {
+          window.showErrorMessage(
+            'No Impact graph to export. Please open the Impact — Import Graph view first.'
+          );
+          return;
+        }
+
+        panel.exportPng();
+      }
+    )
   );
+
 }
 
 /**
@@ -211,108 +220,6 @@ function toGraphModel(res: RunResult, root: string): GraphModel {
     workspaceRoot: root
   };
 }
-
-/*
-function toGraphModel(res: RunStage05Result, root: string): GraphModel {
-  const modules: ModuleIR[] = (res.modules || []) as ModuleIR[];
-
-  const toAbs = (p: string): string =>
-    path.isAbsolute(p) ? p : path.resolve(root, p);
-
-  const toId = (abs: string): string =>
-    path.relative(root, abs).replace(/\\/g, '/');
-
-  // 1) 建立文件 → 节点 id 映射
-  const fileToId = new Map<string, string>();
-  for (const m of modules) {
-    if (!m.file) { continue; }
-    const abs = toAbs(m.file);
-    fileToId.set(abs, toId(abs));
-  }
-
-  console.log('[client][toGraphModel] fileToId',
-    Array.from(fileToId.entries())
-  );
-
-  const hasId = (abs: string) => fileToId.has(abs);
-
-  // 2️⃣ 遍历 import，利用 resolved / 相对路径 建边
-  const edgeKeys = new Set<string>();
-
-  for (const m of modules) {
-    if (!m.file) { continue; }
-
-    const fromAbs = toAbs(m.file);
-    const fromId = fileToId.get(fromAbs);
-    if (!fromId) { continue; }
-
-    const imports: ImportEntry[] = m.imports || [];
-
-    for (const im of imports) {
-      let targetAbs: string | undefined;
-
-      // 优先：统一的 resolved（Python / TS / etc）
-      if (im.resolved) {
-        const candAbs = toAbs(im.resolved);
-        if (hasId(candAbs) && candAbs !== fromAbs) {
-          targetAbs = candAbs;
-        }
-      }
-
-      // 兜底：仅处理 ./ ../ 相对路径（兼容旧 TS/JS）
-      if (!targetAbs && im.source) {
-        const s = im.source;
-        if (s.startsWith('./') || s.startsWith('../')) {
-          const candAbs = path.resolve(path.dirname(fromAbs), s);
-          if (hasId(candAbs) && candAbs !== fromAbs) {
-            targetAbs = candAbs;
-          }
-        }
-      }
-
-      if (!targetAbs) { continue; }
-
-      const toIdVal = fileToId.get(targetAbs);
-      if (!toIdVal) { continue; }
-
-      edgeKeys.add(`${fromId}|${toIdVal}`);
-    }
-  }
-
-  console.log('[client][toGraphModel] edgeKeys',
-    Array.from(edgeKeys)
-  );
-
-  // 3️⃣ 组装 GraphModel
-  const nodes = Array.from(
-    new Set(Array.from(fileToId.values()))
-  ).map((id) => ({ id }));
-
-  const edges = Array.from(edgeKeys).map((k) => {
-    const [source, target] = k.split('|');
-    return { source, target };
-  });
-
-  const stats = (res).stats || {};
-
-  console.log('[client][toGraphModel] graphModel', {
-    nodes: nodes.length,
-    edges: edges.length,
-  });
-
-  return {
-    nodes,
-    edges,
-    stats: {
-      files: nodes.length,
-      edges: edges.length,
-      parsed: stats.parsed ?? modules.length,
-      cached: stats.cached ?? 0,
-      timeMs: stats.timeMs ?? 0,
-    },
-  };
-}
-*/
 
 function basename(id: string): string {
   const parts = id.split('/');
