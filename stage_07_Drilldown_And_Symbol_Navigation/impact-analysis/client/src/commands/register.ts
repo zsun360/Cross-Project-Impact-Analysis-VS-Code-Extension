@@ -68,7 +68,7 @@ export function registerCommands(
 
       await analyzeAndRender();
 
-      // ---- watcher: 变更时重新分析 ----
+      // ---- watcher: re analyze in realtime ----
       const pattern = new RelativePattern(
         folder,
         '**/*.{ts,tsx,js,jsx,py}'

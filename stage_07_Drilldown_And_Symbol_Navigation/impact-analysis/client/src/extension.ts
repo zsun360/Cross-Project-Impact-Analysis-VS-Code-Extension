@@ -6,10 +6,7 @@
 import {
   window,
   ExtensionContext,
-  commands,
   OutputChannel,
-  WebviewPanel,
-  ViewColumn,
   Uri,
   ExtensionMode
 } from "vscode";
